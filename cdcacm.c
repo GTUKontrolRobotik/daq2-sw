@@ -260,27 +260,53 @@ static void systick_setup(void)
 }
 
 static void tim_init(void){
-	rcc_periph_clock_enable(RCC_TIM1);
+	//rcc_periph_clock_enable(RCC_TIM1);
 	rcc_periph_clock_enable(RCC_TIM2);
+	rcc_periph_clock_enable(RCC_TIM3);
+	//rcc_periph_clock_enable(RCC_TIM4);
 	rcc_periph_clock_enable(RCC_GPIOA);
 	rcc_periph_clock_enable(RCC_GPIOB);
 	rcc_periph_clock_enable(RCC_AFIO);
+
+	/*TIM4 CH1 = B6 CH2 = B7 */
+	/*gpio_set_mode(GPIOB, GPIO_MODE_INPUT,
+	              GPIO_CNF_INPUT_FLOAT,
+		      GPIO6 | GPIO7); */
 
 	/*TIM2 CH1 = A0 CH2 = A1 */
 	gpio_set_mode(GPIOA, GPIO_MODE_INPUT,
 	              GPIO_CNF_INPUT_FLOAT,
 		      GPIO0 | GPIO1); 
 
-	/*TIM1 CH1 = A8 CH2 = A9 */
-	gpio_set_mode(GPIOA, GPIO_MODE_INPUT,
+	/*TIM3 CH1 = B4 CH2 = B5 */
+	gpio_set_mode(GPIOB, GPIO_MODE_INPUT,
 	              GPIO_CNF_INPUT_FLOAT,
-	              GPIO8 | GPIO9); 
+		      GPIO4 | GPIO5); 
+	//AFIO_MAPR |= AFIO_MAPR_TIM3_REMAP_PARTIAL_REMAP;
+	gpio_primary_remap(0, AFIO_MAPR_TIM3_REMAP_PARTIAL_REMAP);
 
-	timer_set_period(TIM1, 4095);
+	/*TIM1 CH1 = A8 CH2 = A9 */
+	/*gpio_set_mode(GPIOA, GPIO_MODE_INPUT,
+	              GPIO_CNF_INPUT_FLOAT,
+	              GPIO8 | GPIO9); */
+
+	/*timer_set_period(TIM1, 4095);
 	timer_slave_set_mode(TIM1, 0x3); //encoder
 	timer_ic_set_input(TIM1, TIM_IC1, TIM_IC_IN_TI1);
 	timer_ic_set_input(TIM1, TIM_IC2, TIM_IC_IN_TI2);
-	timer_enable_counter(TIM1);
+	timer_enable_counter(TIM1);*/
+
+	timer_set_period(TIM3, 4095);
+	timer_slave_set_mode(TIM3, 0x3); //encoder
+	timer_ic_set_input(TIM3, TIM_IC1, TIM_IC_IN_TI1);
+	timer_ic_set_input(TIM3, TIM_IC2, TIM_IC_IN_TI2);
+	timer_enable_counter(TIM3);
+
+	/*timer_set_period(TIM4, 4095);
+	timer_slave_set_mode(TIM4, 0x3); //encoder
+	timer_ic_set_input(TIM4, TIM_IC1, TIM_IC_IN_TI1);
+	timer_ic_set_input(TIM4, TIM_IC2, TIM_IC_IN_TI2);
+	timer_enable_counter(TIM4);*/
 
 	timer_set_period(TIM2, 4095);
 	timer_slave_set_mode(TIM2, 0x3); //encoder
@@ -344,17 +370,22 @@ int main(void)
 
 	tim_init();
 
+	//while(1) usbd_poll(usbd_dev);
 	
 	i = 0;
 	while (1){
+		usbd_poll(usbd_dev);
 		i++;
-		dac_write(0,0,timer_get_counter(TIM1));
-		dac_write(0,1,timer_get_counter(TIM2));
 		if(i>4096) i = 0;
-		//usbd_poll(usbd_dev);
-		gpio_clear(GPIOC, GPIO13);
+		dac_write(0,0,timer_get_counter(TIM3));
+		dac_write(0,1,timer_get_counter(TIM2));
+		//dac_write(0,0,i);
+		//dac_write(0,1,i);
+		
+
+		/*gpio_clear(GPIOC, GPIO13);
 		msleep(1);
 		gpio_set(GPIOC, GPIO13);
-		msleep(1);
+		msleep(1);*/
 	}
 }
