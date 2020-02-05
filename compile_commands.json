@@ -1,0 +1,22 @@
+[
+    {
+        "arguments": [
+            "arm-none-eabi-gcc",
+            "-c",
+            "-std=c99",
+            "-I.",
+            "-DSTM32F1",
+            "-DSTM32F1",
+            "-DSTM32F103C8T6",
+            "-I/opt/libopencm3/include",
+            "-mcpu=cortex-m3",
+            "-mthumb",
+            "-msoft-float",
+            "-o",
+            "cdcacm.o",
+            "cdcacm.c"
+        ],
+        "directory": "/home/mesih/workspace/usb_cdcacm",
+        "file": "cdcacm.c"
+    }
+]
