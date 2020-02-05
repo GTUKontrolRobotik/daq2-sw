@@ -259,6 +259,36 @@ static void systick_setup(void)
 	systick_counter_enable();
 }
 
+static void tim_init(void){
+	rcc_periph_clock_enable(RCC_TIM1);
+	rcc_periph_clock_enable(RCC_TIM2);
+	rcc_periph_clock_enable(RCC_GPIOA);
+	rcc_periph_clock_enable(RCC_GPIOB);
+	rcc_periph_clock_enable(RCC_AFIO);
+
+	/*TIM2 CH1 = A0 CH2 = A1 */
+	gpio_set_mode(GPIOA, GPIO_MODE_INPUT,
+	              GPIO_CNF_INPUT_FLOAT,
+		      GPIO0 | GPIO1); 
+
+	/*TIM1 CH1 = A8 CH2 = A9 */
+	gpio_set_mode(GPIOA, GPIO_MODE_INPUT,
+	              GPIO_CNF_INPUT_FLOAT,
+	              GPIO8 | GPIO9); 
+
+	timer_set_period(TIM1, 4095);
+	timer_slave_set_mode(TIM1, 0x3); //encoder
+	timer_ic_set_input(TIM1, TIM_IC1, TIM_IC_IN_TI1);
+	timer_ic_set_input(TIM1, TIM_IC2, TIM_IC_IN_TI2);
+	timer_enable_counter(TIM1);
+
+	timer_set_period(TIM2, 4095);
+	timer_slave_set_mode(TIM2, 0x3); //encoder
+	timer_ic_set_input(TIM2, TIM_IC1, TIM_IC_IN_TI1);
+	timer_ic_set_input(TIM2, TIM_IC2, TIM_IC_IN_TI2);
+	timer_enable_counter(TIM2);
+}
+
 int main(void)
 {
 	int i;
@@ -312,12 +342,14 @@ int main(void)
 	spi_set_nss_high(SPI1);
 	spi_enable(SPI1);
 
+	tim_init();
+
 	
 	i = 0;
 	while (1){
 		i++;
-		dac_write(0,0,i);
-		dac_write(0,1,i);
+		dac_write(0,0,timer_get_counter(TIM1));
+		dac_write(0,1,timer_get_counter(TIM2));
 		if(i>4096) i = 0;
 		//usbd_poll(usbd_dev);
 		gpio_clear(GPIOC, GPIO13);
