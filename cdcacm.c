@@ -25,6 +25,7 @@
 #include <libopencm3/usb/usbd.h>
 #include <libopencm3/usb/cdc.h>
 #include <libopencm3/cm3/systick.h>
+#include <string.h>
 #include "mcp492x.h"
 
 static const struct usb_device_descriptor dev = {
@@ -206,6 +207,28 @@ static enum usbd_request_return_codes cdcacm_control_request(usbd_device *usbd_d
 	return USBD_REQ_NOTSUPP;
 }
 
+#define IN_TYPE  0x44 //'D' dac
+#define OUT_TYPE 0x45 //'E' enc
+#define END      0x0A //Line feed
+#pragma pack(push, 1)
+typedef struct {
+	uint8_t type;
+	uint16_t enc1;
+	uint16_t enc2;
+	uint8_t end;
+} out_msg_t;
+
+typedef struct {
+	uint8_t type;
+	uint16_t dac1;
+	uint16_t dac2;
+	uint8_t end;
+} in_msg_t;
+#pragma pack(pop)
+
+in_msg_t  in_msg  = { IN_TYPE,  0, 0, END };
+out_msg_t out_msg = { OUT_TYPE, 0, 0, END };
+
 static void cdcacm_data_rx_cb(usbd_device *usbd_dev, uint8_t ep)
 {
 	(void)ep;
@@ -214,9 +237,12 @@ static void cdcacm_data_rx_cb(usbd_device *usbd_dev, uint8_t ep)
 	char buf[64];
 	int len = usbd_ep_read_packet(usbd_dev, 0x01, buf, 64);
 
-	if (len) {
-		usbd_ep_write_packet(usbd_dev, 0x82, buf, len);
-		buf[len] = 0;
+	if (len >= sizeof(in_msg_t)) {
+		memcpy(&in_msg, buf, sizeof(in_msg_t)); 
+		if(in_msg.type == IN_TYPE && in_msg.end == END){
+			dac_write(0,0,in_msg.dac1);
+			dac_write(0,1,in_msg.dac2);
+		}
 	}
 }
 
@@ -236,6 +262,7 @@ static void cdcacm_set_config(usbd_device *usbd_dev, uint16_t wValue)
 				cdcacm_control_request);
 }
 
+
 volatile uint32_t system_millis;
 volatile uint8_t usb_ok = 0;
 usbd_device *usbd_dev;
@@ -248,6 +275,7 @@ void sys_tick_handler(void)
 
 void msleep(uint32_t delay)
 {
+	delay = delay*10;
 	uint32_t wake = system_millis + delay;
 	while (wake > system_millis);
 }
@@ -257,7 +285,7 @@ static void systick_setup(void)
 	/* 72MHz / 8 => 9000000 counts per second. */
 	systick_set_clocksource(STK_CSR_CLKSOURCE_AHB_DIV8);
 	/* 9000000/9000 = 1000 overflows per second - every 1ms one interrupt */
-	systick_set_reload(8999);
+	systick_set_reload(899); //8999 1ms
 	systick_interrupt_enable();
 	systick_counter_enable();
 }
@@ -372,22 +400,16 @@ int main(void)
 	spi_enable(SPI1);
 
 	tim_init();
+	msleep(5000);
 
-	//while(1) usbd_poll(usbd_dev);
-	
-	i = 0;
-	while (1){
-		i++;
-		if(i>4096) i = 0;
-		dac_write(0,0,timer_get_counter(TIM3));
-		dac_write(0,1,timer_get_counter(TIM2));
-		//dac_write(0,0,i);
-		//dac_write(0,1,i);
-		
-
-		/*gpio_clear(GPIOC, GPIO13);
-		msleep(1);
+	uint32_t last_time = 0;
+	while(1){
+		last_time = system_millis;
 		gpio_set(GPIOC, GPIO13);
-		msleep(1);*/
+		out_msg.enc1 = timer_get_counter(TIM3);
+		out_msg.enc2 = timer_get_counter(TIM2);
+		usbd_ep_write_packet(usbd_dev, 0x82, (char *)&out_msg, sizeof(out_msg_t));
+		gpio_clear(GPIOC, GPIO13);
+		while(system_millis < last_time + 50);
 	}
 }
