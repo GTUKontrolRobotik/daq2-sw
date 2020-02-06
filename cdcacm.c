@@ -237,10 +237,13 @@ static void cdcacm_set_config(usbd_device *usbd_dev, uint16_t wValue)
 }
 
 volatile uint32_t system_millis;
+volatile uint8_t usb_ok = 0;
+usbd_device *usbd_dev;
 
 void sys_tick_handler(void)
 {
 	system_millis++;
+	if(usb_ok) usbd_poll(usbd_dev);
 }
 
 void msleep(uint32_t delay)
@@ -319,7 +322,6 @@ int main(void)
 {
 	int i;
 
-	usbd_device *usbd_dev;
 
 	rcc_clock_setup_in_hse_8mhz_out_72mhz();
 	systick_setup();
@@ -336,6 +338,7 @@ int main(void)
 	for (i = 0; i < 0x800000; i++)
 		__asm__("nop");
 	gpio_clear(GPIOC, GPIO13);
+	usb_ok = 1;
 
 
 	rcc_periph_clock_enable(RCC_GPIOA);
@@ -374,7 +377,6 @@ int main(void)
 	
 	i = 0;
 	while (1){
-		usbd_poll(usbd_dev);
 		i++;
 		if(i>4096) i = 0;
 		dac_write(0,0,timer_get_counter(TIM3));
