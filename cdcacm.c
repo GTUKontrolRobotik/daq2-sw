@@ -229,6 +229,7 @@ typedef struct {
 in_msg_t  in_msg  = { IN_TYPE,  0, 0, END };
 out_msg_t out_msg = { OUT_TYPE, 0, 0, END };
 
+volatile uint8_t incoming = 0;
 static void cdcacm_data_rx_cb(usbd_device *usbd_dev, uint8_t ep)
 {
 	(void)ep;
@@ -242,6 +243,7 @@ static void cdcacm_data_rx_cb(usbd_device *usbd_dev, uint8_t ep)
 		if(in_msg.type == IN_TYPE && in_msg.end == END){
 			dac_write(0,0,in_msg.dac1);
 			dac_write(0,1,in_msg.dac2);
+			incoming = 1;
 		}
 	}
 }
@@ -400,16 +402,17 @@ int main(void)
 	spi_enable(SPI1);
 
 	tim_init();
-	msleep(5000);
+	msleep(10000);
 
 	uint32_t last_time = 0;
 	while(1){
-		last_time = system_millis;
-		gpio_set(GPIOC, GPIO13);
-		out_msg.enc1 = timer_get_counter(TIM3);
-		out_msg.enc2 = timer_get_counter(TIM2);
-		usbd_ep_write_packet(usbd_dev, 0x82, (char *)&out_msg, sizeof(out_msg_t));
-		gpio_clear(GPIOC, GPIO13);
-		while(system_millis < last_time + 50);
+		if(incoming){
+			gpio_set(GPIOC, GPIO13);
+			out_msg.enc1 = timer_get_counter(TIM3);
+			out_msg.enc2 = timer_get_counter(TIM2);
+			usbd_ep_write_packet(usbd_dev, 0x82, (char *)&out_msg, sizeof(out_msg_t));
+			incoming = 0;
+			gpio_clear(GPIOC, GPIO13);
+		}
 	}
 }
