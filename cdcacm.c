@@ -241,9 +241,20 @@ static void cdcacm_data_rx_cb(usbd_device *usbd_dev, uint8_t ep)
 	if (len >= sizeof(in_msg_t)) {
 		memcpy(&in_msg, buf, sizeof(in_msg_t)); 
 		if(in_msg.type == IN_TYPE && in_msg.end == END){
+			gpio_set(GPIOC, GPIO13);
 			dac_write(0,0,in_msg.dac1);
 			dac_write(0,1,in_msg.dac2);
 			incoming = 1;
+		}
+	} else {
+		if(buf[0] == 'T'){
+			buf[0] = 'h';
+			buf[1] = 'e';
+			buf[2] = 'l';
+			buf[3] = 'l';
+			buf[4] = 'o';
+			buf[5] = '\n';
+			usbd_ep_write_packet(usbd_dev, 0x82, buf, 6);
 		}
 	}
 }
@@ -347,6 +358,40 @@ static void tim_init(void){
 	timer_ic_set_input(TIM2, TIM_IC2, TIM_IC_IN_TI2);
 	timer_enable_counter(TIM2);
 }
+static void dac_init(void){
+	rcc_periph_clock_enable(RCC_GPIOA);
+	rcc_periph_clock_enable(RCC_GPIOB);
+	rcc_periph_clock_enable(RCC_AFIO);
+	rcc_periph_clock_enable(RCC_SPI1);
+	/* B3 = SCK, B4 = MISO, B5 = MOSI, B8 = SS */
+	//AFIO_MAPR |= AFIO_MAPR_SPI1_REMAP;
+	gpio_set_mode(GPIOA, GPIO_MODE_OUTPUT_50_MHZ,
+		      GPIO_CNF_OUTPUT_ALTFN_PUSHPULL,
+		      GPIO5 | GPIO7);
+	gpio_set_mode(GPIOB, GPIO_MODE_OUTPUT_50_MHZ,
+		      GPIO_CNF_OUTPUT_ALTFN_PUSHPULL,
+		      GPIO3 | GPIO5);
+	gpio_set_mode(GPIOB, GPIO_MODE_INPUT,
+		      GPIO_CNF_INPUT_FLOAT,
+		      GPIO4);
+	gpio_set_mode(GPIOB, GPIO_MODE_OUTPUT_50_MHZ,
+		      GPIO_CNF_OUTPUT_PUSHPULL,
+		      GPIO8);
+
+	spi_reset(SPI1);
+	spi_init_master(SPI1, SPI_CR1_BAUDRATE_FPCLK_DIV_64, SPI_CR1_CPOL_CLK_TO_0_WHEN_IDLE,
+			SPI_CR1_CPHA_CLK_TRANSITION_1, SPI_CR1_DFF_16BIT, SPI_CR1_MSBFIRST);
+	//spi_set_clock_phase_0(SPI1);
+	//spi_set_clock_polarity_0(SPI1);
+	spi_enable_software_slave_management(SPI1);
+	spi_set_unidirectional_mode(SPI1);
+	spi_set_full_duplex_mode(SPI1);
+	spi_set_nss_high(SPI1);
+	spi_enable(SPI1);
+}
+
+#define SLEEP 1
+#define WAKE 2
 
 int main(void)
 {
@@ -365,54 +410,49 @@ int main(void)
 	usbd_dev = usbd_init(&st_usbfs_v1_usb_driver, &dev, &config, usb_strings, 3, usbd_control_buffer, sizeof(usbd_control_buffer));
 	usbd_register_set_config_callback(usbd_dev, cdcacm_set_config);
 
-	for (i = 0; i < 0x800000; i++)
-		__asm__("nop");
+	//for (i = 0; i < 0x800000; i++)
+	//	__asm__("nop");
 	gpio_clear(GPIOC, GPIO13);
 	usb_ok = 1;
 
 
-	rcc_periph_clock_enable(RCC_GPIOA);
-	rcc_periph_clock_enable(RCC_GPIOB);
-	rcc_periph_clock_enable(RCC_AFIO);
-	rcc_periph_clock_enable(RCC_SPI1);
-	/* B3 = SCK, B4 = MISO, B5 = MOSI, B8 = SS */
-	//AFIO_MAPR |= AFIO_MAPR_SPI1_REMAP;
-	gpio_set_mode(GPIOA, GPIO_MODE_OUTPUT_50_MHZ,
-	              GPIO_CNF_OUTPUT_ALTFN_PUSHPULL,
-		      GPIO5 | GPIO7);
-	gpio_set_mode(GPIOB, GPIO_MODE_OUTPUT_50_MHZ,
-	              GPIO_CNF_OUTPUT_ALTFN_PUSHPULL,
-		      GPIO3 | GPIO5);
-	gpio_set_mode(GPIOB, GPIO_MODE_INPUT,
-	              GPIO_CNF_INPUT_FLOAT,
-		      GPIO4);
-	gpio_set_mode(GPIOB, GPIO_MODE_OUTPUT_50_MHZ,
-	              GPIO_CNF_OUTPUT_PUSHPULL,
-		      GPIO8);
-
-	spi_reset(SPI1);
-	spi_init_master(SPI1, SPI_CR1_BAUDRATE_FPCLK_DIV_64, SPI_CR1_CPOL_CLK_TO_0_WHEN_IDLE,
-			SPI_CR1_CPHA_CLK_TRANSITION_1, SPI_CR1_DFF_16BIT, SPI_CR1_MSBFIRST);
-	//spi_set_clock_phase_0(SPI1);
-	//spi_set_clock_polarity_0(SPI1);
-	spi_enable_software_slave_management(SPI1);
-	spi_set_unidirectional_mode(SPI1);
-	spi_set_full_duplex_mode(SPI1);
-	spi_set_nss_high(SPI1);
-	spi_enable(SPI1);
+	dac_init();
+	dac_write(0,0,2047); //2047 = 0V at opamp
+	dac_write(0,1,2047);
 
 	tim_init();
-	msleep(10000);
+	msleep(50000);
 
-	uint32_t last_time = 0;
+	uint32_t last_time = system_millis;
+	uint8_t state = WAKE;
+
+	//reset the encoder 
+	timer_set_counter(TIM3, 0);
+	timer_set_counter(TIM2, 0);
+
 	while(1){
 		if(incoming){
-			gpio_set(GPIOC, GPIO13);
+			if(state == SLEEP){
+				//wake state
+				state = WAKE;
+				//reset encoders
+				timer_set_counter(TIM3, 0);
+				timer_set_counter(TIM2, 0);
+			}
+			//send back ( active ) state
 			out_msg.enc1 = timer_get_counter(TIM3);
 			out_msg.enc2 = timer_get_counter(TIM2);
 			usbd_ep_write_packet(usbd_dev, 0x82, (char *)&out_msg, sizeof(out_msg_t));
 			incoming = 0;
+			last_time = system_millis;
 			gpio_clear(GPIOC, GPIO13);
+		}
+		//if 100ms no incoming data then sleep
+		if(last_time + 1000 < system_millis && state != SLEEP){
+			//sleep state
+			dac_write(0,0,2047); //2047 = 0V at opamp
+			dac_write(0,1,2047);
+			state = SLEEP;
 		}
 	}
 }
