@@ -232,6 +232,8 @@ in_msg_t  in_msg  = { 0, 0 };
 out_msg_t out_msg = { 0, 0 };
 
 volatile uint8_t incoming = 0;
+volatile uint32_t last_time;
+volatile uint32_t system_millis;
 static void cdcacm_data_rx_cb(usbd_device *usbd_dev, uint8_t ep)
 {
 	(void)ep;
@@ -243,9 +245,9 @@ static void cdcacm_data_rx_cb(usbd_device *usbd_dev, uint8_t ep)
 	if (len >= sizeof(in_msg_t)) {
 		memcpy(&in_msg, buf, sizeof(in_msg_t)); 
 		//if(in_msg.type == IN_TYPE && in_msg.end == END){
-			gpio_set(GPIOC, GPIO13);
 			dac_write(0,0,in_msg.dac1);
 			dac_write(0,1,in_msg.dac2);
+			last_time = system_millis;
 			incoming = 1;
 		//}
 	} else {
@@ -278,7 +280,6 @@ static void cdcacm_set_config(usbd_device *usbd_dev, uint16_t wValue)
 }
 
 
-volatile uint32_t system_millis;
 usbd_device *usbd_dev;
 
 void sys_tick_handler(void)
@@ -288,7 +289,6 @@ void sys_tick_handler(void)
 
 void msleep(uint32_t delay)
 {
-	delay = delay*10;
 	uint32_t wake = system_millis + delay;
 	while (wake > system_millis)
 		usbd_poll(usbd_dev);
@@ -299,7 +299,7 @@ static void systick_setup(void)
 	/* 72MHz / 8 => 9000000 counts per second. */
 	systick_set_clocksource(STK_CSR_CLKSOURCE_AHB_DIV8);
 	/* 9000000/9000 = 1000 overflows per second - every 1ms one interrupt */
-	systick_set_reload(899); //8999 1ms
+	systick_set_reload(8999); //8999 1ms
 	systick_interrupt_enable();
 	systick_counter_enable();
 }
@@ -404,16 +404,15 @@ int main(void)
 
 	rcc_periph_clock_enable(RCC_GPIOC);
 
-	gpio_set(GPIOC, GPIO13);
 	gpio_set_mode(GPIOC, GPIO_MODE_OUTPUT_2_MHZ,
 		      GPIO_CNF_OUTPUT_PUSHPULL, GPIO13);
+	gpio_clear(GPIOC, GPIO13);
 
 	usbd_dev = usbd_init(&st_usbfs_v1_usb_driver, &dev, &config, usb_strings, 3, usbd_control_buffer, sizeof(usbd_control_buffer));
 	usbd_register_set_config_callback(usbd_dev, cdcacm_set_config);
 
 	//for (i = 0; i < 0x800000; i++)
 	//	__asm__("nop");
-	gpio_clear(GPIOC, GPIO13);
 
 
 	dac_init();
@@ -421,14 +420,15 @@ int main(void)
 	dac_write(0,1,2047);
 
 	tim_init();
-	msleep(50000);
-
-	uint32_t last_time = system_millis;
-	uint8_t state = WAKE;
+	msleep(5000);
+	gpio_set(GPIOC, GPIO13);
 
 	//reset the encoder 
 	timer_set_counter(TIM3, 0);
 	timer_set_counter(TIM2, 0);
+
+	volatile uint8_t state = SLEEP;
+	last_time = system_millis;
 
 	while(1){
 		usbd_poll(usbd_dev);
@@ -436,6 +436,7 @@ int main(void)
 			if(state == SLEEP){
 				//wake state
 				state = WAKE;
+				gpio_set(GPIOC, GPIO13);
 				//reset encoders
 				timer_set_counter(TIM3, 0);
 				timer_set_counter(TIM2, 0);
@@ -445,14 +446,13 @@ int main(void)
 			out_msg.enc2 = timer_get_counter(TIM2);
 			usbd_ep_write_packet(usbd_dev, 0x82, (char *)&out_msg, sizeof(out_msg_t));
 			incoming = 0;
-			last_time = system_millis;
-			gpio_clear(GPIOC, GPIO13);
 		}
-		//if 100ms no incoming data then sleep
-		if(last_time + 1000 < system_millis && state != SLEEP){
+		//if 500ms no incoming data then sleep
+		if(last_time + 500 < system_millis && state != SLEEP){
 			//sleep state
 			dac_write(0,0,2047); //2047 = 0V at opamp
 			dac_write(0,1,2047);
+			gpio_clear(GPIOC, GPIO13);
 			state = SLEEP;
 		}
 	}
