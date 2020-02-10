@@ -169,7 +169,7 @@ static const char *usb_strings[] = {
 };
 
 /* Buffer to be used for control requests. */
-uint8_t usbd_control_buffer[128];
+uint8_t usbd_control_buffer[256];
 
 static enum usbd_request_return_codes cdcacm_control_request(usbd_device *usbd_dev, struct usb_setup_data *req, uint8_t **buf,
 		uint16_t *len, void (**complete)(usbd_device *usbd_dev, struct usb_setup_data *req))
@@ -290,7 +290,8 @@ void msleep(uint32_t delay)
 {
 	delay = delay*10;
 	uint32_t wake = system_millis + delay;
-	while (wake > system_millis);
+	while (wake > system_millis)
+		usbd_poll(usbd_dev);
 }
 
 static void systick_setup(void)
@@ -431,6 +432,7 @@ int main(void)
 	timer_set_counter(TIM2, 0);
 
 	while(1){
+		usbd_poll(usbd_dev);
 		if(incoming){
 			if(state == SLEEP){
 				//wake state
