@@ -213,8 +213,8 @@ static enum usbd_request_return_codes cdcacm_control_request(usbd_device *usbd_d
 #pragma pack(push, 1)
 typedef struct {
 	//uint8_t type;
-	uint16_t enc1;
-	uint16_t enc2;
+	int16_t enc1;
+	int16_t enc2;
 	//uint8_t end;
 } out_msg_t;
 
@@ -341,7 +341,7 @@ static void tim_init(void){
 	timer_ic_set_input(TIM1, TIM_IC2, TIM_IC_IN_TI2);
 	timer_enable_counter(TIM1);*/
 
-	timer_set_period(TIM3, 4095);
+	timer_set_period(TIM3, 0xFFFF);
 	timer_slave_set_mode(TIM3, 0x3); //encoder
 	timer_ic_set_input(TIM3, TIM_IC1, TIM_IC_IN_TI1);
 	timer_ic_set_input(TIM3, TIM_IC2, TIM_IC_IN_TI2);
@@ -353,7 +353,7 @@ static void tim_init(void){
 	timer_ic_set_input(TIM4, TIM_IC2, TIM_IC_IN_TI2);
 	timer_enable_counter(TIM4);*/
 
-	timer_set_period(TIM2, 4095);
+	timer_set_period(TIM2, 0xFFFF);
 	timer_slave_set_mode(TIM2, 0x3); //encoder
 	timer_ic_set_input(TIM2, TIM_IC1, TIM_IC_IN_TI1);
 	timer_ic_set_input(TIM2, TIM_IC2, TIM_IC_IN_TI2);
@@ -424,8 +424,8 @@ int main(void)
 	gpio_set(GPIOC, GPIO13);
 
 	//reset the encoder 
-	timer_set_counter(TIM3, 0);
-	timer_set_counter(TIM2, 0);
+	timer_set_counter(TIM3, 0x7FFF);
+	timer_set_counter(TIM2, 0x7FFF);
 
 	volatile uint8_t state = SLEEP;
 	last_time = system_millis;
@@ -438,12 +438,12 @@ int main(void)
 				state = WAKE;
 				gpio_set(GPIOC, GPIO13);
 				//reset encoders
-				timer_set_counter(TIM3, 0);
-				timer_set_counter(TIM2, 0);
+				timer_set_counter(TIM3, 0x7FFF);
+				timer_set_counter(TIM2, 0x7FFF);
 			}
 			//send back ( active ) state
-			out_msg.enc1 = timer_get_counter(TIM3);
-			out_msg.enc2 = timer_get_counter(TIM2);
+			out_msg.enc1 = timer_get_counter(TIM3) - 0x7FFF;
+			out_msg.enc2 = timer_get_counter(TIM2) - 0x7FFF;
 			usbd_ep_write_packet(usbd_dev, 0x82, (char *)&out_msg, sizeof(out_msg_t));
 			incoming = 0;
 		}
