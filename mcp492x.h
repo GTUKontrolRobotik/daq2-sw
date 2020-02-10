@@ -18,7 +18,6 @@
 extern void msleep(uint32_t delay);
 
 void dac_write(int chip_id, int channel, uint16_t value);
-uint16_t spi_transfer(uint16_t data);
 
 
 #endif

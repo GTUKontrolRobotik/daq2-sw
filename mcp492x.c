@@ -19,7 +19,7 @@ void dac_write(int chip_id, int channel, uint16_t value){
 		gpio_clear(GPIOB, DACCS3);
 		break;
 	}
-	spi_transfer(data);
+	spi_xfer(SPI1, data);
 	switch(chip_id){
 		case CHIP1:
 		gpio_set(GPIOB, DACCS1);
@@ -34,12 +34,4 @@ void dac_write(int chip_id, int channel, uint16_t value){
 	//msleep(1);
 	//gpio_set(GPIOB, LDAC);
 
-}
-
-uint16_t spi_transfer(uint16_t data){
-	while(SPI_SR(SPI1) & SPI_SR_BSY);
-	SPI_DR(SPI1) = data;
-	//while(!(SPI_SR(SPI1) & SPI_SR_RXNE));
-	while(SPI_SR(SPI1) & SPI_SR_BSY);
-	return SPI_DR(SPI1);
 }
