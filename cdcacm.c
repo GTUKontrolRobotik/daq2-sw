@@ -212,22 +212,24 @@ static enum usbd_request_return_codes cdcacm_control_request(usbd_device *usbd_d
 #define END      0x0A //Line feed
 #pragma pack(push, 1)
 typedef struct {
-	uint8_t type;
+	//uint8_t type;
 	uint16_t enc1;
 	uint16_t enc2;
-	uint8_t end;
+	//uint8_t end;
 } out_msg_t;
 
 typedef struct {
-	uint8_t type;
+	//uint8_t type;
 	uint16_t dac1;
 	uint16_t dac2;
-	uint8_t end;
+	//uint8_t end;
 } in_msg_t;
 #pragma pack(pop)
 
-in_msg_t  in_msg  = { IN_TYPE,  0, 0, END };
-out_msg_t out_msg = { OUT_TYPE, 0, 0, END };
+//in_msg_t  in_msg  = { IN_TYPE,  0, 0, END };
+//out_msg_t out_msg = { OUT_TYPE, 0, 0, END };
+in_msg_t  in_msg  = { 0, 0 };
+out_msg_t out_msg = { 0, 0 };
 
 volatile uint8_t incoming = 0;
 static void cdcacm_data_rx_cb(usbd_device *usbd_dev, uint8_t ep)
@@ -240,12 +242,12 @@ static void cdcacm_data_rx_cb(usbd_device *usbd_dev, uint8_t ep)
 
 	if (len >= sizeof(in_msg_t)) {
 		memcpy(&in_msg, buf, sizeof(in_msg_t)); 
-		if(in_msg.type == IN_TYPE && in_msg.end == END){
+		//if(in_msg.type == IN_TYPE && in_msg.end == END){
 			gpio_set(GPIOC, GPIO13);
 			dac_write(0,0,in_msg.dac1);
 			dac_write(0,1,in_msg.dac2);
 			incoming = 1;
-		}
+		//}
 	} else {
 		if(buf[0] == 'T'){
 			buf[0] = 'h';
