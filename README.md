@@ -11,11 +11,11 @@ It can be seen at zenom platform at the target UI with `DaqBoard2` name.
 
 ### Input
 
-* 2 ADC port
+* 2 ADC port `ADC1=PA4`,  `ADC2=PA5`
 
 ### Output
 
-* 3 Servo Port
+* 3 Servo Port `SERVO1=PA2`, `SERVO2=PA3`, `SERVO3=PA15`
 
 
 ## Credits
