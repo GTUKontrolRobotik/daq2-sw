@@ -25,8 +25,10 @@
 #include <libopencm3/usb/usbd.h>
 #include <libopencm3/usb/cdc.h>
 #include <libopencm3/cm3/systick.h>
+#include <libopencm3/stm32/adc.h>
 #include <string.h>
 #include "mcp492x.h"
+#include "servo.h"
 
 static const struct usb_device_descriptor dev = {
 	.bLength = USB_DT_DEVICE_SIZE,
@@ -212,6 +214,17 @@ static enum usbd_request_return_codes cdcacm_control_request(usbd_device *usbd_d
 #define END      0x0A //Line feed
 #pragma pack(push, 1)
 typedef struct {
+	uint16_t servo1;
+	uint16_t servo2;
+	uint16_t servo3;
+} servo_msg_t;
+
+typedef struct {
+	uint16_t adc1;
+	uint16_t adc2;
+} adc_msg_t;
+
+typedef struct {
 	//uint8_t type;
 	int16_t enc1;
 	int16_t enc2;
@@ -230,6 +243,8 @@ typedef struct {
 //out_msg_t out_msg = { OUT_TYPE, 0, 0, END };
 in_msg_t  in_msg  = { 0, 0 };
 out_msg_t out_msg = { 0, 0 };
+adc_msg_t adc_msg = { 0, 0 };
+servo_msg_t servo_msg = { 0, 0, 0 };
 
 volatile uint8_t incoming = 0;
 volatile uint32_t last_time;
@@ -242,14 +257,18 @@ static void cdcacm_data_rx_cb(usbd_device *usbd_dev, uint8_t ep)
 	char buf[64];
 	int len = usbd_ep_read_packet(usbd_dev, 0x01, buf, 64);
 
-	if (len >= sizeof(in_msg_t)) {
+	if (len == sizeof(in_msg_t)) {
 		memcpy(&in_msg, buf, sizeof(in_msg_t)); 
-		//if(in_msg.type == IN_TYPE && in_msg.end == END){
-			dac_write(0,0,in_msg.dac1);
-			dac_write(0,1,in_msg.dac2);
-			last_time = system_millis;
-			incoming = 1;
-		//}
+		dac_write(0,0,in_msg.dac1);
+		dac_write(0,1,in_msg.dac2);
+		last_time = system_millis;
+		incoming = 1;
+	} else if (len == sizeof(servo_msg_t)) {
+		memcpy(&servo_msg, buf, sizeof(servo_msg_t)); 
+        servo_set_position(SERVO_CH1, servo_msg.servo1);
+        servo_set_position(SERVO_CH2, servo_msg.servo2);
+        servo_set_position(SERVO_CH3, servo_msg.servo3);
+		incoming = 1;
 	} else {
 		if(buf[0] == 'T'){
 			buf[0] = 'h';
@@ -391,6 +410,47 @@ static void dac_init(void){
 	spi_enable(SPI1);
 }
 
+
+static void adc_setup(void)
+{
+	rcc_periph_clock_enable(RCC_GPIOA);
+	rcc_periph_clock_enable(RCC_AFIO);
+	rcc_periph_clock_enable(RCC_ADC1);
+	gpio_set_mode(GPIOA, GPIO_MODE_INPUT, GPIO_CNF_INPUT_ANALOG, GPIO4);
+	gpio_set_mode(GPIOA, GPIO_MODE_INPUT, GPIO_CNF_INPUT_ANALOG, GPIO5);
+
+	/* Make sure the ADC doesn't run during config. */
+	adc_power_off(ADC1);
+
+	/* We configure everything for one single conversion. */
+	adc_disable_scan_mode(ADC1);
+	adc_set_single_conversion_mode(ADC1);
+	adc_disable_external_trigger_regular(ADC1);
+	adc_set_right_aligned(ADC1);
+	adc_set_sample_time_on_all_channels(ADC1, ADC_SMPR_SMP_28DOT5CYC);
+
+	adc_power_on(ADC1);
+
+	/* Wait for ADC starting up. */
+	int i;
+	for (i = 0; i < 800000; i++) /* Wait a bit. */
+		__asm__("nop");
+
+	adc_reset_calibration(ADC1);
+	adc_calibrate(ADC1);
+}
+
+static uint16_t read_adc_naiive(uint8_t channel)
+{
+	uint8_t channel_array[16];
+	channel_array[0] = channel;
+	adc_set_regular_sequence(ADC1, 1, channel_array);
+	adc_start_conversion_direct(ADC1);
+	while (!adc_eoc(ADC1));
+	uint16_t reg16 = adc_read_regular(ADC1);
+	return reg16;
+}
+
 #define SLEEP 1
 #define WAKE 2
 
@@ -415,17 +475,19 @@ int main(void)
 	//	__asm__("nop");
 
 
-	dac_init();
-	dac_write(0,0,2047); //2047 = 0V at opamp
-	dac_write(0,1,2047);
+	adc_setup();
+    servo_init();
+	//dac_init();
+	//dac_write(0,0,2047); //2047 = 0V at opamp
+	//dac_write(0,1,2047);
 
-	tim_init();
+	//tim_init();
 	msleep(5000);
 	gpio_set(GPIOC, GPIO13);
 
 	//reset the encoder 
-	timer_set_counter(TIM3, 0x7FFF);
-	timer_set_counter(TIM2, 0x7FFF);
+	//timer_set_counter(TIM3, 0x7FFF);
+	//timer_set_counter(TIM2, 0x7FFF);
 
 	volatile uint8_t state = SLEEP;
 	last_time = system_millis;
@@ -438,20 +500,22 @@ int main(void)
 				state = WAKE;
 				gpio_set(GPIOC, GPIO13);
 				//reset encoders
-				timer_set_counter(TIM3, 0x7FFF);
-				timer_set_counter(TIM2, 0x7FFF);
+				//timer_set_counter(TIM3, 0x7FFF);
+				//timer_set_counter(TIM2, 0x7FFF);
 			}
 			//send back ( active ) state
-			out_msg.enc1 = timer_get_counter(TIM3) - 0x7FFF;
-			out_msg.enc2 = timer_get_counter(TIM2) - 0x7FFF;
-			usbd_ep_write_packet(usbd_dev, 0x82, (char *)&out_msg, sizeof(out_msg_t));
+			//out_msg.enc1 = timer_get_counter(TIM3) - 0x7FFF;
+			//out_msg.enc2 = timer_get_counter(TIM2) - 0x7FFF;
+			adc_msg.adc1 = read_adc_naiive(4);
+			adc_msg.adc2 = read_adc_naiive(5);
+			usbd_ep_write_packet(usbd_dev, 0x82, (char *)&adc_msg, sizeof(adc_msg_t));
 			incoming = 0;
 		}
 		//if 500ms no incoming data then sleep
 		if(last_time + 500 < system_millis && state != SLEEP){
 			//sleep state
-			dac_write(0,0,2047); //2047 = 0V at opamp
-			dac_write(0,1,2047);
+			//dac_write(0,0,2047); //2047 = 0V at opamp
+			//dac_write(0,1,2047);
 			gpio_clear(GPIOC, GPIO13);
 			state = SLEEP;
 		}

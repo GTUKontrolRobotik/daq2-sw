@@ -1,12 +1,12 @@
 DEVICE          = stm32f103c8t6
-TYPE		= STM32F1
+TYPE			= STM32F1
 OPENCM3_DIR     = /opt/libopencm3
 BINARY          = daq
 
-SRCS            += cdcacm.c mcp492x.c 
+SRCS            += cdcacm.c mcp492x.c servo.c pwm.c
 INCLUDES        += -I.
 
-STFLASH		= $(shell which st-flash)
+STFLASH			= $(shell which st-flash)
 
 #ARCHFLAGS 	= -mthumb -mcpu=cortex-m0 -msoft-float
 CFLAGS          += -std=c99  $(INCLUDES) -D$(TYPE)
