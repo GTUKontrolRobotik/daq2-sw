@@ -1,9 +1,9 @@
 DEVICE          = stm32f103c8t6
 TYPE			= STM32F1
 OPENCM3_DIR     = /opt/libopencm3
-BINARY          = daq
+BINARY          = daq2
 
-SRCS            += cdcacm.c mcp492x.c servo.c pwm.c
+SRCS            += main.c usb.c servo.c pwm.c
 INCLUDES        += -I.
 
 STFLASH			= $(shell which st-flash)
